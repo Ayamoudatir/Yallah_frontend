@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,26 +7,61 @@ import {
   FlatList,
   StyleSheet,
 } from 'react-native';
+import API from './services/api';
+
+type Task = {
+  id: number;
+  title: string;
+};
 
 export default function TodoScreen() {
-  const [tasks, setTasks] = useState<{ id: string; title: string }[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [text, setText] = useState('');
 
-  const addTask = () => {
-    if (!text.trim()) return;
-    setTasks([...tasks, { id: Date.now().toString(), title: text }]);
-    setText('');
+  // 🔹 Charger les tâches
+  const fetchTasks = async () => {
+    try {
+      const response = await API.get('/tasks/');
+      setTasks(response.data);
+    } catch (e) {
+      console.log('GET ERROR', e);
+    }
   };
 
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter(task => task.id !== id));
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  // 🔹 Ajouter une tâche
+  const addTask = async () => {
+    if (text.trim() === '') return;
+
+    try {
+      await API.post('/tasks/', {
+        title: text,
+        completed: false,
+      });
+      setText('');
+      fetchTasks();
+    } catch (e) {
+      console.log('POST ERROR', e);
+    }
+  };
+
+  // 🔹 Supprimer une tâche
+  const deleteTask = async (id: number) => {
+    try {
+      await API.delete(`/tasks/${id}/`);
+      fetchTasks();
+    } catch (e) {
+      console.log('DELETE ERROR', e);
+    }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Ma Todo List 📝</Text>
 
-      {/* Input + Add */}
       <View style={styles.inputRow}>
         <TextInput
           value={text}
@@ -34,15 +69,15 @@ export default function TodoScreen() {
           placeholder="Nouvelle tâche..."
           style={styles.input}
         />
+
         <TouchableOpacity style={styles.addButton} onPress={addTask}>
           <Text style={styles.addText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Liste */}
       <FlatList
         data={tasks}
-        keyExtractor={item => item.id}
+        keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <View style={styles.task}>
             <Text style={styles.taskText}>{item.title}</Text>
@@ -62,7 +97,6 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#FEF3C7',
   },
-
   title: {
     fontSize: 26,
     fontWeight: 'bold',
@@ -70,52 +104,41 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-
   inputRow: {
     flexDirection: 'row',
     marginBottom: 16,
   },
-
   input: {
     flex: 1,
     backgroundColor: 'white',
     borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#f59e0b',
+    padding: 12,
   },
-
   addButton: {
     marginLeft: 10,
     backgroundColor: '#d97706',
     borderRadius: 10,
     width: 50,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-
   addText: {
     color: 'white',
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 'bold',
   },
-
   task: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     backgroundColor: 'white',
     padding: 14,
     borderRadius: 10,
     marginBottom: 10,
   },
-
   taskText: {
     fontSize: 16,
     color: '#78350f',
   },
-
   delete: {
     color: '#dc2626',
     fontSize: 18,
