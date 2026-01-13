@@ -1,24 +1,14 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Stack } from 'expo-router';
 
-export default function TabLayout() {
+export default function Layout() {
   return (
-    <Tabs
-      initialRouteName="welcome"   // ✅ OBLIGATOIRE
-      screenOptions={{
-        headerShown: false,
-
-        // 🔥 Cache totalement la tab bar Expo
-        tabBarStyle: { display: 'none' },
-        tabBarItemStyle: { display: 'none' },
-      }}
-    >
-      <Tabs.Screen name="welcome" />
-      <Tabs.Screen name="todo" />
-      <Tabs.Screen name="settings" />
-
-      {/* ⚠️ index DOIT ÊTRE EN DERNIER ou supprimé */}
-      <Tabs.Screen name="index" />
-    </Tabs>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="sign_up" />
+      <Stack.Screen name="welcome" />
+      <Stack.Screen name="todo" />
+      <Stack.Screen name="settings" />
+    </Stack>
   );
 }
