@@ -9,15 +9,14 @@ import { signOut } from 'firebase/auth';
 import { collection, getDocs, getFirestore, onSnapshot, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-    Alert,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 export const options = {

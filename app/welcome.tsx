@@ -97,12 +97,19 @@ export default function WelcomeScreen() {
     centerDate.setDate(centerDate.getDate() + offset);
     
     // Générer le calendrier autour de la nouvelle date, en gardant la date sélectionnée
+    // Générer le calendrier autour de la nouvelle date, en gardant la date sélectionnée
     const currentSelectedDate = weekDays[selectedDay]?.fullDate;
     if (currentSelectedDate) {
-      generateCalendar(currentSelectedDate, true);
-    } else {
-      generateCalendar(centerDate.toISOString().split('T')[0], true);
-    }
+    generateCalendar(currentSelectedDate, true);
+   }else {
+  generateCalendar(formatLocalDate(centerDate), true);
+   }
+  };
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   useEffect(() => {
@@ -171,18 +178,19 @@ export default function WelcomeScreen() {
         ? new Date(weekDays[selectedDay].fullDate + 'T00:00:00')
         : baseDate;
 
-    for (let i = -3; i <= 3; i++) {
-      const date = new Date(centerDate);
-      date.setDate(centerDate.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-
-      days.push({
-        month: date.toLocaleDateString('en-US', { month: 'short' }),
-        day: date.getDate(),
-        fullDate: dateStr,
-        isToday: dateStr === todayStr,
-      });
-    }
+        for (let i = -3; i <= 3; i++) {
+          const date = new Date(centerDate);
+          date.setDate(centerDate.getDate() + i);
+        
+          const dateStr = formatLocalDate(date); 
+        
+          days.push({
+            month: date.toLocaleDateString('en-US', { month: 'short' }),
+            day: date.getDate(),
+            fullDate: dateStr,
+            isToday: dateStr === todayStr,
+          });
+        }
 
     // Trouver l'index de la date sélectionnée
     // Si on force le centre, la date sélectionnée doit être à l'index 3 (centre)
