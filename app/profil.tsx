@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
 import { collection, getDocs, getFirestore, onSnapshot, query, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -38,6 +38,17 @@ export default function ProfilScreen() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [tasksByDate, setTasksByDate] = useState<Record<string, { completed: number; pending: number }>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const unsubscribeTasksRef = useRef<(() => void) | null>(null);
+
+  // Helpers pour éviter les décalages de date (UTC)
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTodayString = () => formatLocalDate(new Date());
 
   useEffect(() => {
     loadUserData();
@@ -61,9 +72,23 @@ export default function ProfilScreen() {
   };
 
   useEffect(() => {
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeTasksRef.current) {
+      unsubscribeTasksRef.current();
+      unsubscribeTasksRef.current = null;
+    }
+
     if (calendarVisible) {
       loadAllTasks();
     }
+
+    // Nettoyage au démontage
+    return () => {
+      if (unsubscribeTasksRef.current) {
+        unsubscribeTasksRef.current();
+        unsubscribeTasksRef.current = null;
+      }
+    };
   }, [calendarVisible]);
 
   const loadUserData = async () => {
@@ -117,31 +142,43 @@ export default function ProfilScreen() {
   const loadAllTasks = () => {
     if (!auth.currentUser) return;
 
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeTasksRef.current) {
+      unsubscribeTasksRef.current();
+      unsubscribeTasksRef.current = null;
+    }
+
     const tasksRef = collection(db, 'tasks');
     const q = query(tasksRef, where('userId', '==', auth.currentUser.uid));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const tasksByDateMap: Record<string, { completed: number; pending: number }> = {};
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const tasksByDateMap: Record<string, { completed: number; pending: number }> = {};
 
-      snapshot.forEach((doc) => {
-        const task = doc.data();
-        if (task.date) {
-          const dateKey = task.date;
-          if (!tasksByDateMap[dateKey]) {
-            tasksByDateMap[dateKey] = { completed: 0, pending: 0 };
+        snapshot.forEach((doc) => {
+          const task = doc.data();
+          if (task.date) {
+            const dateKey = task.date;
+            if (!tasksByDateMap[dateKey]) {
+              tasksByDateMap[dateKey] = { completed: 0, pending: 0 };
+            }
+            if (task.completed) {
+              tasksByDateMap[dateKey].completed++;
+            } else {
+              tasksByDateMap[dateKey].pending++;
+            }
           }
-          if (task.completed) {
-            tasksByDateMap[dateKey].completed++;
-          } else {
-            tasksByDateMap[dateKey].pending++;
-          }
-        }
-      });
+        });
 
-      setTasksByDate(tasksByDateMap);
-    });
+        setTasksByDate(tasksByDateMap);
+      },
+      (error) => {
+        console.error('Erreur lors du chargement des tâches:', error);
+      }
+    );
 
-    return () => unsubscribe();
+    unsubscribeTasksRef.current = unsubscribe;
   };
 
   const pickImage = async () => {
@@ -172,7 +209,7 @@ export default function ProfilScreen() {
       [
         {
           text: 'Annuler',
-          style: 'cancel',
+          style: 'cancel'
         },
         {
           text: 'Déconnexion',
@@ -184,10 +221,10 @@ export default function ProfilScreen() {
                 return;
               }
               
+              // On garde les données locales (image de profil, date sélectionnée, thèmes, etc.)
+              // pour que l'état visuel de l'app reste sauvegardé même après déconnexion.
               await signOut(auth);
               await AsyncStorage.removeItem('isLoggedIn');
-              await AsyncStorage.removeItem('@yalah_profile_image');
-              await AsyncStorage.removeItem('@yalah_selected_date');
               router.replace('/');
             } catch (error: any) {
               console.error('Erreur lors de la déconnexion:', error);
@@ -282,8 +319,7 @@ export default function ProfilScreen() {
     const startingDayOfWeek = firstDay.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
 
     const weekDays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = getTodayString();
 
     const days = [];
     
@@ -312,9 +348,7 @@ export default function ProfilScreen() {
       days.push({ date, isCurrentMonth: false });
     }
 
-    const getDateKey = (date: Date) => {
-      return date.toISOString().split('T')[0];
-    };
+    const getDateKey = (date: Date) => formatLocalDate(date);
 
     const getDateStatus = (date: Date) => {
       const dateKey = getDateKey(date);

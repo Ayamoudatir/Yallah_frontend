@@ -4,8 +4,9 @@ import { firebaseApp } from '@/firebase/firebaseConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, doc, getFirestore, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   FlatList,
@@ -49,6 +50,8 @@ function TodoScreenContent() {
   const [themePickerVisible, setThemePickerVisible] = useState(false);
   const [displayDate, setDisplayDate] = useState('');
   const [fadeAnim] = useState(new Animated.Value(1));
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     loadSelectedDate();
@@ -70,15 +73,30 @@ function TodoScreenContent() {
       }
     };
 
-    const interval = setInterval(checkDateChange, 500);
+    // Réduire la fréquence à 2 secondes au lieu de 500ms
+    const interval = setInterval(checkDateChange, 2000);
     return () => clearInterval(interval);
      
   }, [selectedDate]);
 
   useEffect(() => {
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
     if (auth.currentUser && selectedDate) {
       loadAllTasks();
     }
+
+    // Nettoyage au démontage
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
@@ -135,6 +153,13 @@ function TodoScreenContent() {
   const loadAllTasks = () => {
     if (!auth.currentUser || !selectedDate) return;
 
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
+    setTasksLoading(true);
     const tasksRef = collection(db, 'tasks');
     const q = query(
       tasksRef,
@@ -142,28 +167,36 @@ function TodoScreenContent() {
       where('date', '==', selectedDate)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const tasksData: Task[] = [];
-      
-      snapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
-        } as Task);
-      });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const tasksData: Task[] = [];
+        
+        snapshot.forEach((doc) => {
+          tasksData.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Task);
+        });
 
-      // Trier les tâches (non complétées en premier)
-      tasksData.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0));
+        // Trier les tâches (non complétées en premier)
+        tasksData.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0));
 
-      // Convertir en format TasksByDate pour l'affichage
-      const tasksByDateMap: TasksByDate = {};
-      if (tasksData.length > 0) {
-        tasksByDateMap[selectedDate] = tasksData;
+        // Convertir en format TasksByDate pour l'affichage
+        const tasksByDateMap: TasksByDate = {};
+        if (tasksData.length > 0) {
+          tasksByDateMap[selectedDate] = tasksData;
+        }
+        setTasksByDate(tasksByDateMap);
+        setTasksLoading(false);
+      },
+      (error) => {
+        console.error('Erreur lors du chargement des tâches:', error);
+        setTasksLoading(false);
       }
-      setTasksByDate(tasksByDateMap);
-    });
+    );
 
-    return () => unsubscribe();
+    unsubscribeRef.current = unsubscribe;
   };
 
   const isPastDate = (dateStr: string): boolean => {
@@ -328,11 +361,17 @@ function TodoScreenContent() {
           </TouchableOpacity>
         )}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            {isPastDate(selectedDate)
-              ? `Aucune tâche pour le ${displayDate}`
-              : `Aucune tâche pour ${displayDate}. Ajoutez-en une ci-dessus !`}
-          </Text>
+          tasksLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#7c4a1d" />
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>
+              {isPastDate(selectedDate)
+                ? `Aucune tâche pour le ${displayDate}`
+                : `Aucune tâche pour ${displayDate}. Ajoutez-en une ci-dessus !`}
+            </Text>
+          )
         }
       />
 
@@ -590,6 +629,12 @@ const styles = StyleSheet.create({
     color: '#999',
     fontSize: 14,
     marginTop: 40,
+  },
+
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   dateSection: {

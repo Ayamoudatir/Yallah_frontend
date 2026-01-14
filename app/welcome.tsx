@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ResizeMode, Video } from 'expo-av';
 import { useRouter } from 'expo-router';
 import { collection, deleteDoc, doc, getFirestore, onSnapshot, query, updateDoc, where } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -44,7 +44,9 @@ export default function WelcomeScreen() {
   const [selectedDay, setSelectedDay] = useState(0);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const loadProfileImage = async () => {
     try {
@@ -116,10 +118,10 @@ export default function WelcomeScreen() {
     init();
     loadProfileImage();
     
-    // Écouter les changements d'image de profil seulement
+    // Écouter les changements d'image de profil seulement (réduit à 3 secondes)
     const interval = setInterval(() => {
       loadProfileImage();
-    }, 1000);
+    }, 3000);
     
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,15 +144,30 @@ export default function WelcomeScreen() {
       }
     };
 
-    const interval = setInterval(checkDateChange, 500);
+    // Réduire la fréquence à 2 secondes au lieu de 500ms
+    const interval = setInterval(checkDateChange, 2000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, weekDays]);
 
   useEffect(() => {
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
     if (auth.currentUser && weekDays.length > 0 && weekDays[selectedDay]) {
       loadTasks();
     }
+
+    // Nettoyage au démontage
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, weekDays]);
 
@@ -242,6 +259,13 @@ export default function WelcomeScreen() {
     const selectedDate = weekDays[selectedDay]?.fullDate;
     if (!selectedDate) return;
 
+    // Nettoyer l'abonnement précédent
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
+    setTasksLoading(true);
     const tasksRef = collection(db, 'tasks');
     const q = query(
       tasksRef,
@@ -249,18 +273,26 @@ export default function WelcomeScreen() {
       where('date', '==', selectedDate)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const tasksData: Task[] = [];
-      snapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
-        } as Task);
-      });
-      setTasks(tasksData.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0)));
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const tasksData: Task[] = [];
+        snapshot.forEach((doc) => {
+          tasksData.push({
+            id: doc.id,
+            ...doc.data(),
+          } as Task);
+        });
+        setTasks(tasksData.sort((a, b) => (a.completed ? 1 : 0) - (b.completed ? 1 : 0)));
+        setTasksLoading(false);
+      },
+      (error) => {
+        console.error('Erreur lors du chargement des tâches:', error);
+        setTasksLoading(false);
+      }
+    );
 
-    return () => unsubscribe();
+    unsubscribeRef.current = unsubscribe;
   };
 
 
@@ -421,7 +453,11 @@ export default function WelcomeScreen() {
         
         {/* TASKS LIST */}
         <ScrollView style={styles.tasksList} contentContainerStyle={styles.tasksListContent}>
-          {tasks.length === 0 ? (
+          {tasksLoading ? (
+            <View style={{ paddingVertical: 20, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : tasks.length === 0 ? (
             <Text style={styles.emptyText}>No tasks for this day</Text>
           ) : (
             tasks.map((task) => (
