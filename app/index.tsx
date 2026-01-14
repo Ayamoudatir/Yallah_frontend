@@ -1,10 +1,9 @@
-
-export const options = {
-  headerShown: false,
-};
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Google from 'expo-auth-session/providers/google';
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   ImageBackground,
   StyleSheet,
@@ -13,8 +12,60 @@ import {
   View,
 } from 'react-native';
 
+import { EXPO_CLIENT_ID, handleGoogleAuthResponse } from '@/firebase/googleAuth';
+
+export const options = {
+  headerShown: false,
+};
+
 export default function HomeScreen() {
   const router = useRouter();
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: EXPO_CLIENT_ID,
+    androidClientId: EXPO_CLIENT_ID,
+    selectAccount: true,
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      handleGoogleAuth(response);
+    } else if (response?.type === 'error') {
+      setGoogleLoading(false);
+      Alert.alert('Erreur', 'Connexion Google échouée');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
+
+  const handleGoogleAuth = async (authResponse: any) => {
+    try {
+      setGoogleLoading(true);
+      const userCredential = await handleGoogleAuthResponse(authResponse);
+      await AsyncStorage.setItem('isLoggedIn', userCredential.user.uid);
+      router.replace('/welcome');
+    } catch (error: any) {
+      console.error('Erreur lors de la connexion Google:', error);
+      let message = 'Connexion Google échouée';
+      if (error.message) {
+        message = error.message;
+      }
+      Alert.alert('Erreur', message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    try {
+      setGoogleLoading(true);
+      await promptAsync();
+    } catch (error: any) {
+      console.error('Erreur lors du lancement de la connexion Google:', error);
+      setGoogleLoading(false);
+      Alert.alert('Erreur', 'Impossible de lancer la connexion Google');
+    }
+  };
 
   return (
     <ImageBackground
@@ -34,8 +85,10 @@ export default function HomeScreen() {
 
         {/* GOOGLE */}
         <TouchableOpacity 
-          style={styles.googleButton}
+          style={[styles.googleButton, (googleLoading || !request) && styles.googleButtonDisabled]}
           activeOpacity={0.7}
+          onPress={signInWithGoogle}
+          disabled={googleLoading || !request}
         >
           <Image
             source={require('../assets/images/icons/gmail.png')}
@@ -96,6 +149,10 @@ const styles = StyleSheet.create({
     borderRadius: 40,
     paddingVertical: 14,
     marginBottom: 18,
+  },
+
+  googleButtonDisabled: {
+    opacity: 0.5,
   },
 
   googleIcon: {

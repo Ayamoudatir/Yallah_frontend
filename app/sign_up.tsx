@@ -1,5 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Google from 'expo-auth-session/providers/google';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -12,6 +14,7 @@ import {
 } from 'react-native';
 
 import { auth } from '@/firebase/auth';
+import { EXPO_CLIENT_ID, handleGoogleAuthResponse } from '@/firebase/googleAuth';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 
 export const options = {
@@ -25,6 +28,52 @@ export default function SignUpScreen() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    iosClientId: EXPO_CLIENT_ID,
+    androidClientId: EXPO_CLIENT_ID,
+    selectAccount: true,
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      handleGoogleSignUp(response);
+    } else if (response?.type === 'error') {
+      setGoogleLoading(false);
+      Alert.alert('Erreur', 'Inscription Google échouée');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [response]);
+
+  const handleGoogleSignUp = async (authResponse: any) => {
+    try {
+      setGoogleLoading(true);
+      const userCredential = await handleGoogleAuthResponse(authResponse);
+      await AsyncStorage.setItem('isLoggedIn', userCredential.user.uid);
+      router.replace('/welcome');
+    } catch (error: any) {
+      console.error('Erreur lors de l\'inscription Google:', error);
+      let message = 'Inscription Google échouée';
+      if (error.message) {
+        message = error.message;
+      }
+      Alert.alert('Erreur', message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const signUpWithGoogle = async () => {
+    try {
+      setGoogleLoading(true);
+      await promptAsync();
+    } catch (error: any) {
+      console.error('Erreur lors du lancement de l\'inscription Google:', error);
+      setGoogleLoading(false);
+      Alert.alert('Erreur', 'Impossible de lancer l\'inscription Google');
+    }
+  };
 
   const signUp = async () => {
     const cleanEmail = email.trim();
@@ -82,7 +131,7 @@ export default function SignUpScreen() {
       } else if (error.code === 'auth/weak-password') {
         message = 'Mot de passe trop faible';
       } else if (error.code === 'auth/network-request-failed') {
-        message = 'Erreur de connexion. Vérifiez votre réseau';
+        message = 'Erreur de connexion réseau.\n\nVérifiez que :\n• Votre connexion internet fonctionne\n• Vous n\'êtes pas derrière un VPN/Proxy\n• Le simulateur a accès au réseau';
       } else if (error.code === 'auth/operation-not-allowed') {
         message = 'L\'inscription par email/mot de passe n\'est pas activée';
       } else if (error.code === 'auth/too-many-requests') {
@@ -177,6 +226,21 @@ export default function SignUpScreen() {
           {loading ? 'Loading...' : 'Sign Up'}
         </Text>
       </TouchableOpacity>
+
+      {/* GOOGLE */}
+      <TouchableOpacity
+        style={[
+          styles.googleButton,
+          (googleLoading || !request) && styles.googleButtonDisabled,
+        ]}
+        onPress={signUpWithGoogle}
+        disabled={googleLoading || !request}
+      >
+        <Image
+          source={require('../assets/images/icons/gmail.png')}
+          style={styles.googleIcon}
+        />
+      </TouchableOpacity>
     </ImageBackground>
   );
 }
@@ -242,5 +306,28 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#7c4a1d',
     fontFamily: 'YallahScript',
+  },
+
+  /* ===== GOOGLE ===== */
+  googleButton: {
+    position: 'absolute',
+    bottom: 80,
+    left: '50%',
+    marginLeft: -30,
+    width: 60,
+    height: 60,
+    backgroundColor: '#f6e1b5',
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  googleButtonDisabled: {
+    opacity: 0.5,
+  },
+
+  googleIcon: {
+    width: 32,
+    height: 32,
   },
 });
